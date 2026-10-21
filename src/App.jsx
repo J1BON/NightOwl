@@ -196,7 +196,7 @@ export default function App() {
   const setFine = (key, value) => {
     const current = stateRef.current
     if (!current) return
-    if ((key === "contrast" || key === "brightness") && !current.connected) return
+    if (key === "brightness" && !current.connected) return
     const limit = key === "veil" ? current.veilMax : key === "warmth" ? current.warmthMax : current.contrastMax
     const next = clamp(value, 0, limit)
     hold(key)
@@ -480,7 +480,7 @@ export default function App() {
           <FineSlider
             id="warmth"
             label="Warmth"
-            hint="A steady amber tint over the desktop."
+            hint="A light warm tint. The picture stays readable."
             value={state.warmth}
             max={state.warmthMax}
             onEngage={(active) => engage("warmth", active)}
@@ -489,21 +489,39 @@ export default function App() {
           <FineSlider
             id="contrast"
             label="Contrast"
-            hint="On the panel itself. Slide it a long way — a few points are hard to see."
+            hint="50 is the normal picture. Lower looks flatter, higher looks stronger."
             value={state.contrast}
             max={state.contrastMax}
-            disabled={!state.connected}
             onEngage={(active) => engage("contrast", active)}
             onChange={(value) => setFine("contrast", value)}
           />
         </div>
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-4 px-6 pb-5 pt-1">
-        <p className="text-[14px] text-muted">
-          Scroll the tray icon
+      <footer className="shrink-0 px-6 pb-5 pt-1">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-[14px] text-muted">Scroll the tray icon</p>
+          <p className="text-[14px] text-muted">{state.connected ? "DDC/CI" : "No link"}</p>
+        </div>
+        <p className="mt-3 text-[13px] leading-5 text-muted">
+          Made by{" "}
+          <a className="credit focusable rounded-sm" href="https://jibanahammed.com/" target="_blank" rel="noreferrer">
+            J1BON
+          </a>
         </p>
-        <p className="text-[14px] text-muted">{state.connected ? "DDC/CI" : "No link"}</p>
+        <p className="text-[13px] leading-5 text-muted">
+          <a className="credit focusable rounded-sm" href="https://github.com/J1BON" target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <span aria-hidden="true"> · </span>
+          <a className="credit focusable rounded-sm" href="https://jibanahammed.com/" target="_blank" rel="noreferrer">
+            jibanahammed.com
+          </a>
+          <span aria-hidden="true"> · </span>
+          <a className="credit focusable rounded-sm" href="mailto:jibanahammed8@gmail.com">
+            jibanahammed8@gmail.com
+          </a>
+        </p>
       </footer>
     </main>
     </div>

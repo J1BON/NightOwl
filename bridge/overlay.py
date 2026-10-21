@@ -20,10 +20,12 @@ WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPA
 
 WM_HOTKEY = 0x0312
 WM_PAINT = 0x000F
+WM_ERASEBKGND = 0x0014
 WM_DESTROY = 0x0002
 WM_QUIT = 0x0012
 WM_APP_VEIL = 0x8000 + 7
-TINT_COLOR = 0x002884FF
+# Pale amber, BGR. A saturated orange reads as a solid screen once the desktop is dim.
+TINT_COLOR = 0x00B4D2FF
 
 WS_POPUP = 0x80000000
 WS_EX_LAYERED = 0x00080000
@@ -34,6 +36,10 @@ WS_EX_NOACTIVATE = 0x08000000
 
 SW_HIDE = 0
 HWND_TOPMOST = -1
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOZORDER = 0x0004
+SWP_NOREDRAW = 0x0008
 SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
 LWA_ALPHA = 0x02
@@ -344,6 +350,8 @@ class Veil:
     def _wndproc(self, hwnd, msg, wparam, lparam):
         if self._tray is not None and self._tray.handle(hwnd, msg, wparam, lparam):
             return 0
+        if msg == WM_ERASEBKGND:
+            return 1
         if msg == WM_APP_VEIL:
             alpha = int(wparam) & 0xFF
             if hwnd == self.tint_hwnd:
@@ -354,10 +362,7 @@ class Veil:
             self._ack.set()
             return 0
         if msg == 0x0113 and int(wparam) == 3:
-            if self._veil_alpha > 0 and self.hwnd:
-                self._apply_alpha(self.hwnd, self._veil_alpha)
-            if self._tint_alpha > 0 and self.tint_hwnd:
-                self._apply_alpha(self.tint_hwnd, self._tint_alpha)
+            self._raise_stack()
             return 0
         if msg == WM_HOTKEY:
             step = 5 if int(wparam) == HOT_UP else -5 if int(wparam) == HOT_DOWN else 0
@@ -391,21 +396,23 @@ class Veil:
         if alpha <= 0:
             user32.ShowWindow(hwnd, SW_HIDE)
             return
-        geo = geometry()
         user32.SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)
-        user32.SetWindowPos(
-            hwnd,
-            ctypes.c_void_p(HWND_TOPMOST),
-            geo["left"],
-            geo["top"],
-            max(1, geo["right"] - geo["left"]),
-            max(1, geo["bottom"] - geo["top"]),
-            SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        )
+        if not user32.IsWindowVisible(hwnd):
+            geo = geometry()
+            user32.SetWindowPos(
+                hwnd,
+                None,
+                geo["left"],
+                geo["top"],
+                max(1, geo["right"] - geo["left"]),
+                max(1, geo["bottom"] - geo["top"]),
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            )
+        # Tint first, then the black veil, so warmth cannot paint orange over a dark screen.
         self._raise_stack()
 
     def _raise_stack(self) -> None:
-        flags = 0x0001 | 0x0002 | 0x0010
+        flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOREDRAW
         if self.tint_hwnd and self._tint_alpha > 0:
             user32.SetWindowPos(self.tint_hwnd, ctypes.c_void_p(HWND_TOPMOST), 0, 0, 0, 0, flags)
         if self.hwnd and self._veil_alpha > 0:
@@ -427,4 +434,5 @@ def _warmth_alpha(warmth: int) -> int:
     level = max(0, min(100, int(warmth)))
     if level <= 0:
         return 0
-    return int(round((level / 100) ** 0.85 * 96))
+    # 100 is a readable warm cast. The old cap of 96 on a bright orange filled the screen.
+    return int(round((level / 100) ** 0.8 * 44))

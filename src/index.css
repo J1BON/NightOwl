@@ -171,6 +171,18 @@ input {
   outline-offset: 3px;
 }
 
+.credit {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(243, 238, 230, 0.28);
+  text-underline-offset: 3px;
+}
+
+.credit:hover {
+  color: #f0a14a;
+  text-decoration-color: #f0a14a;
+}
+
 .skeleton {
   background-image: linear-gradient(
     90deg,

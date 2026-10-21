@@ -1,4 +1,4 @@
-"""NightOwl state: hardware backlight, software veil, and warmth."""
+"""NightOwl state: dimming, contrast, and warmth."""
 
 from __future__ import annotations
 
@@ -8,15 +8,17 @@ import queue
 import threading
 
 from bridge.ddc import BRIGHTNESS, CONTRAST, Ddc, DdcError
+from bridge.picture import reset as reset_picture
+from bridge.picture import set_contrast as set_picture_contrast
 from bridge.gamma import Gamma, GammaError
 from bridge.monitor import describe, geometry, identify
 from bridge.overlay import Veil, raise_topmost
 
 VEIL_MAX = 100
 PRESETS = (
-    {"id": "night", "label": "Night", "brightness": 8, "veil": 55, "warmth": 70},
-    {"id": "evening", "label": "Evening", "brightness": 40, "veil": 15, "warmth": 46},
-    {"id": "desk", "label": "Desk", "brightness": 78, "veil": 0, "warmth": 10},
+    {"id": "night", "label": "Night", "brightness": 8, "veil": 55, "warmth": 48},
+    {"id": "evening", "label": "Evening", "brightness": 40, "veil": 15, "warmth": 32},
+    {"id": "desk", "label": "Desk", "brightness": 78, "veil": 0, "warmth": 28},
     {"id": "day", "label": "Day", "brightness": 100, "veil": 0, "warmth": 0},
 )
 
@@ -177,7 +179,7 @@ class Service:
 
         if saved_brightness is not None and brightness != int(current):
             self._hw.put(("brightness", brightness))
-        if saved_contrast is not None and contrast_value != int(contrast):
+        if saved_contrast is not None:
             self._hw.put(("contrast", contrast_value))
         self.veil_window.set_warmth(saved_warmth)
         self.veil_window.set_level(_overlay_level(snap["brightness"], snap["veil"]))
@@ -197,11 +199,8 @@ class Service:
                     if self.error == DDC_ERROR:
                         self.error = None
             if "contrast" in partial:
-                if not self.connected:
-                    self.error = DDC_ERROR
-                else:
-                    self.contrast = _clamp(int(partial["contrast"]), self.contrast_max)
-                    hardware.append(("contrast", self.contrast))
+                self.contrast = _clamp(int(partial["contrast"]), self.contrast_max or 100)
+                hardware.append(("contrast", self.contrast))
             if "veil" in partial:
                 self.veil = _clamp(int(partial["veil"]), VEIL_MAX)
                 veil_level = self.veil
@@ -291,6 +290,7 @@ class Service:
         while True:
             item = self._hw.get()
             if item is None:
+                reset_picture()
                 return
             pending = [item]
             while True:
@@ -299,12 +299,15 @@ class Service:
                 except queue.Empty:
                     break
                 if nxt is None:
+                    reset_picture()
                     return
                 pending.append(nxt)
             latest: dict[str, int] = {}
             for key, value in pending:
                 latest[key] = value
             for key, value in latest.items():
+                if key == "contrast" and set_picture_contrast(value):
+                    continue
                 code = BRIGHTNESS if key == "brightness" else CONTRAST
                 try:
                     self.ddc.set_vcp(code, value)
@@ -381,7 +384,7 @@ class Service:
     def _save_now(self) -> None:
         with self._lock:
             payload = {
-                "version": 2,
+                "version": 3,
                 "brightness": self.brightness,
                 "contrast": self.contrast,
                 "veil": self.veil,
@@ -402,10 +405,15 @@ class Service:
             return {}
         if not isinstance(data, dict):
             return {}
-        if int(data.get("version", 1) or 1) < 2:
+        version = int(data.get("version", 1) or 1)
+        if version < 2:
             # The stored backlight number never changed this panel's picture.
             data["brightness"] = 100
-            data["version"] = 2
+        if version < 3:
+            # The stored contrast number never changed this panel's picture.
+            # 50 is the normal picture.
+            data["contrast"] = 50
+            data["version"] = 3
         return data
 
 
