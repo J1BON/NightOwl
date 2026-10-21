@@ -4,7 +4,7 @@ NightOwl is a Windows brightness app that lives in the system tray.
 
 By [J1BON](https://jibanahammed.com/) · [GitHub](https://github.com/J1BON) · jibanahammed8@gmail.com
 
-The brightness slider dims the desktop with a click-through shade. That is the visible control, because some monitors accept a brightness command and leave the picture unchanged. Contrast is sent to the monitor over DDC/CI when the panel answers. Warmth lays a steady amber tint over the screen. Deeper dark adds more shade on top of the brightness level and stays on while the window is hidden.
+The brightness slider dims the desktop with a click-through shade. That is the visible control, because some monitors accept a brightness command and leave the picture unchanged. Contrast changes the picture on the desktop. 50 is the normal image: lower looks flatter, higher looks stronger. Warmth lays a steady amber tint over the screen. Deeper dark adds more shade on top of the brightness level and stays on while the window is hidden.
 
 Closing the window hides NightOwl in the tray. Quit exits. Scrolling the tray icon changes brightness. It starts with Windows and stays in the tray.
 
@@ -17,13 +17,11 @@ Download `NightOwl-Setup.exe` from the Releases page of this repository. The ins
 
 ## Other monitors
 
-NightOwl is not tied to one model. The window title comes from the monitor itself. The shade, warmth, and tray scroll work on any panel.
-
-Contrast changes the picture only when that monitor answers DDC/CI. Turn DDC/CI on in the monitor menu if the contrast slider reports that the monitor did not answer. Laptop screens and some TVs never answer.
+NightOwl is not tied to one model. The window title comes from the monitor itself. The shade, contrast, warmth, and tray scroll work on any panel.
 
 On a monitor whose backlight follows brightness commands, the slider writes that command and also darkens the desktop. The screen can then look darker than the number alone. Set brightness to 100 to clear the shade.
 
-The shade covers the main display. A second screen is left alone.
+The shade and the warm tint cover the main display. Contrast changes the whole desktop, including a second screen.
 
 ## Build
 
