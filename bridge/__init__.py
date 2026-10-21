@@ -1,0 +1,1 @@
+"""NightOwl desktop brightness control."""
