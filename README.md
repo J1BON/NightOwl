@@ -4,24 +4,25 @@ NightOwl is a Windows brightness app that lives in the system tray.
 
 By [J1BON](https://jibanahammed.com/) · [GitHub](https://github.com/J1BON) · jibanahammed8@gmail.com
 
-The brightness slider dims the desktop with a click-through shade. That is the visible control, because some monitors accept a brightness command and leave the picture unchanged. Contrast changes the picture on the desktop. 50 is the normal image: lower looks flatter, higher looks stronger. Warmth lays a steady amber tint over the screen. Deeper dark adds more shade on top of the brightness level and stays on while the window is hidden.
+The brightness slider dims the desktop with a click-through shade. That is the visible control, because some monitors accept a brightness command and leave the picture unchanged. The shade stays on your screen. Screenshots and Meet keep the normal picture, so shared text stays readable. Contrast changes the picture on the desktop. 50 is the normal image: lower looks flatter, higher looks stronger. Warmth lays a steady amber tint over the screen. Deeper dark adds more shade on top of the brightness level and stays on while the window is hidden.
 
 Closing the window hides NightOwl in the tray. Quit exits. Scrolling the tray icon changes brightness. It starts with Windows and stays in the tray.
 
 ## Install
 
-Download `NightOwl-Setup.exe` from the Releases page of this repository. The installer does not ask for an administrator password. It adds a Start menu shortcut, a desktop shortcut, and a startup entry.
+Download `NightOwl-Setup.exe` from the Releases page. Send that setup file. Do not send `NightOwl.exe` by itself. The setup already contains `python311.dll` and the other files the program needs, in a folder named `_internal`. The installer does not ask for an administrator password. It adds a Start menu shortcut, a desktop shortcut, and a startup entry. Windows may say the publisher is unknown because the file is not code-signed.
 
-- Windows 10 or Windows 11, 64-bit
-- The Microsoft Edge WebView2 runtime, which current Windows already includes
+- 64-bit Windows 10 or Windows 11. Not a Mac, a phone, or a 32-bit PC.
+- The Microsoft Edge WebView2 runtime. Windows 11 and current Windows 10 with Edge already include it. The window cannot open without it.
+- Screenshots stay free of the shade on Windows 10 from the May 2020 update, and on Windows 11.
 
 ## Other monitors
 
-NightOwl is not tied to one model. The window title comes from the monitor itself. The shade, contrast, warmth, and tray scroll work on any panel.
+NightOwl is not tied to one model. The window title comes from the monitor itself. The shade, contrast, warmth, and tray scroll work on Intel, NVIDIA, and AMD.
 
 On a monitor whose backlight follows brightness commands, the slider writes that command and also darkens the desktop. The screen can then look darker than the number alone. Set brightness to 100 to clear the shade.
 
-The shade and the warm tint cover the main display. Contrast changes the whole desktop, including a second screen.
+The shade and the warm tint cover the main display. Contrast changes the whole desktop, including a second screen. Scroll the tray icon itself to change brightness.
 
 ## Build
 

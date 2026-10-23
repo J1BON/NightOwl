@@ -44,6 +44,8 @@ SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
 LWA_ALPHA = 0x02
 BLACK_BRUSH = 4
+ULW_ALPHA = 0x00000002
+WDA_EXCLUDEFROMCAPTURE = 0x00000011
 
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
@@ -101,6 +103,23 @@ class MSG(ctypes.Structure):
     ]
 
 
+class POINT(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+class SIZE(ctypes.Structure):
+    _fields_ = [("cx", ctypes.c_long), ("cy", ctypes.c_long)]
+
+
+class BLENDFUNCTION(ctypes.Structure):
+    _fields_ = [
+        ("BlendOp", ctypes.c_ubyte),
+        ("BlendFlags", ctypes.c_ubyte),
+        ("SourceConstantAlpha", ctypes.c_ubyte),
+        ("AlphaFormat", ctypes.c_ubyte),
+    ]
+
+
 def raise_topmost(hwnd) -> None:
     if not hwnd:
         return
@@ -133,6 +152,24 @@ def _bind() -> None:
     user32.ShowWindow.restype = wintypes.BOOL
     user32.SetLayeredWindowAttributes.argtypes = [wintypes.HWND, wintypes.COLORREF, wintypes.BYTE, wintypes.DWORD]
     user32.SetLayeredWindowAttributes.restype = wintypes.BOOL
+    user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user32.SetWindowDisplayAffinity.restype = wintypes.BOOL
+    user32.UpdateLayeredWindow.argtypes = [
+        wintypes.HWND,
+        wintypes.HDC,
+        ctypes.POINTER(POINT),
+        ctypes.POINTER(SIZE),
+        wintypes.HDC,
+        ctypes.POINTER(POINT),
+        wintypes.COLORREF,
+        ctypes.POINTER(BLENDFUNCTION),
+        wintypes.DWORD,
+    ]
+    user32.UpdateLayeredWindow.restype = wintypes.BOOL
+    user32.GetDC.argtypes = [wintypes.HWND]
+    user32.GetDC.restype = wintypes.HDC
+    user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    user32.ReleaseDC.restype = ctypes.c_int
     user32.SetWindowPos.argtypes = [
         wintypes.HWND,
         ctypes.c_void_p,
@@ -171,6 +208,12 @@ def _bind() -> None:
     gdi32.GetStockObject.restype = wintypes.HBRUSH
     gdi32.CreateSolidBrush.argtypes = [wintypes.DWORD]
     gdi32.CreateSolidBrush.restype = wintypes.HBRUSH
+    gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    gdi32.CreateCompatibleDC.restype = wintypes.HDC
+    gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+    gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+    gdi32.DeleteDC.argtypes = [wintypes.HDC]
+    gdi32.DeleteDC.restype = wintypes.BOOL
     gdi32.CreateFontW.argtypes = [
         ctypes.c_int,
         ctypes.c_int,
@@ -222,6 +265,7 @@ class Veil:
         self._veil_alpha = 0
         self._tint_alpha = 0
         self._amber = None
+        self._surface = {}
         self._tray = None
         self.on_open = None
         self.on_quit = None
@@ -396,20 +440,55 @@ class Veil:
         if alpha <= 0:
             user32.ShowWindow(hwnd, SW_HIDE)
             return
-        user32.SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)
-        if not user32.IsWindowVisible(hwnd):
-            geo = geometry()
-            user32.SetWindowPos(
+        geo = geometry()
+        width = max(1, geo["right"] - geo["left"])
+        height = max(1, geo["bottom"] - geo["top"])
+        color = TINT_COLOR if hwnd == self.tint_hwnd else 0
+        source = self._color_dc(hwnd, color, width, height)
+        blend = BLENDFUNCTION(0, 0, alpha, 0)
+        dest = POINT(geo["left"], geo["top"])
+        size = SIZE(width, height)
+        origin = POINT(0, 0)
+        user32.ShowWindow(hwnd, 8)
+        updated = False
+        try:
+            updated = bool(user32.UpdateLayeredWindow(
                 hwnd,
                 None,
-                geo["left"],
-                geo["top"],
-                max(1, geo["right"] - geo["left"]),
-                max(1, geo["bottom"] - geo["top"]),
-                SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-            )
-        # Tint first, then the black veil, so warmth cannot paint orange over a dark screen.
+                ctypes.byref(dest),
+                ctypes.byref(size),
+                source,
+                ctypes.byref(origin),
+                0,
+                ctypes.byref(blend),
+                ULW_ALPHA,
+            ))
+        except (OverflowError, OSError):
+            updated = False
+        if not updated:
+            user32.SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)
+            user32.ShowWindow(hwnd, 8)
+        user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
         self._raise_stack()
+
+    def _color_dc(self, hwnd, color: int, width: int, height: int):
+        key = int(hwnd)
+        cached = self._surface.get(key)
+        if cached is not None and cached[1] == (color, width, height):
+            return cached[0]
+        if cached is not None:
+            gdi32.DeleteDC(cached[0])
+            gdi32.DeleteObject(cached[2])
+        screen = user32.GetDC(None)
+        memory = gdi32.CreateCompatibleDC(screen)
+        bitmap = gdi32.CreateCompatibleBitmap(screen, width, height)
+        gdi32.SelectObject(memory, bitmap)
+        brush = gdi32.CreateSolidBrush(color)
+        user32.FillRect(memory, ctypes.byref(RECT(0, 0, width, height)), brush)
+        gdi32.DeleteObject(brush)
+        user32.ReleaseDC(None, screen)
+        self._surface[key] = (memory, (color, width, height), bitmap)
+        return memory
 
     def _raise_stack(self) -> None:
         flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOREDRAW

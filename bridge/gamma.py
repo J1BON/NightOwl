@@ -69,6 +69,34 @@ class Gamma:
             ramp[512 + i] = _clamp_channel(base * blue_gain)
         self._write(ramp)
 
+    def present(self, shade: int, warmth: int) -> bool:
+        """Dim the monitor without putting a layer into screenshots."""
+        shade = max(0, min(100, int(shade)))
+        warmth = max(0, min(100, int(warmth)))
+        if shade == 0 and warmth == 0:
+            try:
+                self._write(_identity())
+            except GammaError:
+                return False
+            return True
+        amount = shade / 100
+        factor = 1 - (amount ** 0.72) * (236 / 255)
+        warm = warmth / 100
+        red = factor * (1 + 0.05 * warm)
+        green = factor * (1 - 0.10 * warm)
+        blue = factor * (1 - 0.45 * warm)
+        ramp = (ctypes.c_ushort * 768)()
+        for i in range(256):
+            base = i * 65535 / 255
+            ramp[i] = _clamp_channel(base * red)
+            ramp[256 + i] = _clamp_channel(base * green)
+            ramp[512 + i] = _clamp_channel(base * blue)
+        try:
+            self._write(ramp)
+        except GammaError:
+            return False
+        return True
+
     def neutralize(self) -> None:
         """Clear a leftover warm ramp once. Live warmth is an overlay now."""
         ramp = self._read()

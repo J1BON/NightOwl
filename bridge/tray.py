@@ -315,12 +315,8 @@ class Tray:
             return None
         width = rect.right - rect.left
         height = rect.bottom - rect.top
-        if width <= 0 or height <= 0 or width > 96 or height > 96:
+        if width <= 0 or height <= 0 or width > 64 or height > 64:
             return None
-        rect.left -= 28
-        rect.top -= 28
-        rect.right += 28
-        rect.bottom += 28
         return rect
 
     def _nid(self, flags: int) -> NOTIFYICONDATAW:

@@ -87,7 +87,7 @@ class Service:
 
     def start(self) -> None:
         try:
-            self.gamma.neutralize()
+            self.gamma.present(0, 0)
         except GammaError:
             pass
         self.veil_window.start()
@@ -99,6 +99,10 @@ class Service:
             return
         self._closed = True
         self.veil_window.stop()
+        try:
+            self.gamma.present(0, 0)
+        except GammaError:
+            pass
         if self._touched:
             self._save_now()
         self.ddc.close()
@@ -147,8 +151,7 @@ class Service:
                 veil_level = self.veil
                 warmth_level = self.warmth
                 snap = self._snapshot()
-            self.veil_window.set_warmth(warmth_level)
-            self.veil_window.set_level(_overlay_level(snap["brightness"], veil_level))
+            self._paint(snap["brightness"], veil_level, warmth_level)
             self.veil_window.note(snap["brightness"], osd=False)
             self._publish(snap)
             return snap
@@ -181,8 +184,7 @@ class Service:
             self._hw.put(("brightness", brightness))
         if saved_contrast is not None:
             self._hw.put(("contrast", contrast_value))
-        self.veil_window.set_warmth(saved_warmth)
-        self.veil_window.set_level(_overlay_level(snap["brightness"], snap["veil"]))
+        self._paint(snap["brightness"], snap["veil"], saved_warmth)
         self.veil_window.note(snap["brightness"], osd=False)
         self._publish(snap)
         return snap
@@ -211,10 +213,7 @@ class Service:
             snap = self._snapshot()
         for item in hardware:
             self._hw.put(item)
-        if veil_level is not None or "brightness" in partial:
-            self.veil_window.set_level(_overlay_level(snap["brightness"], snap["veil"]))
-        if warmth_level is not None:
-            self.veil_window.set_warmth(warmth_level)
+        self._paint(snap["brightness"], snap["veil"], snap["warmth"])
         if "brightness" in partial:
             self.veil_window.note(snap["brightness"])
         self._schedule_save()
@@ -241,10 +240,14 @@ class Service:
             snap = self._snapshot()
         if connected:
             self._hw.put(("brightness", value))
-        self.veil_window.set_level(_overlay_level(value, veil_level))
+        self._paint(value, veil_level, snap["warmth"])
         self.veil_window.note(value)
         self._schedule_save()
         self._publish(snap)
+
+    def _paint(self, brightness: int, veil: int, warmth: int) -> None:
+        self.veil_window.set_level(_overlay_level(brightness, veil))
+        self.veil_window.set_warmth(warmth)
 
     def minimize(self) -> None:
         window = self._window
