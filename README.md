@@ -4,7 +4,7 @@ NightOwl is a Windows brightness app that lives in the system tray.
 
 By [J1BON](https://jibanahammed.com/) · [GitHub](https://github.com/J1BON) · jibanahammed8@gmail.com
 
-The brightness slider dims the desktop with a click-through shade. That is the visible control, because some monitors accept a brightness command and leave the picture unchanged. The shade stays on your screen. Screenshots and Meet keep the normal picture, so shared text stays readable. Contrast changes the picture on the desktop. 50 is the normal image: lower looks flatter, higher looks stronger. Warmth lays a steady amber tint over the screen. Deeper dark adds more shade on top of the brightness level and stays on while the window is hidden.
+The brightness slider dims the desktop with a click-through shade. That is the visible control, because some monitors accept a brightness command and leave the picture unchanged. The shade stays on your screen, including while you hover a taskbar preview. Screenshots and Meet keep the normal picture, so shared text stays readable. Contrast changes the picture on the desktop. 50 is the normal image: lower looks flatter, higher looks stronger. Warmth lays a steady amber tint over the screen. Deeper dark adds more shade on top of the brightness level and stays on while the window is hidden.
 
 Closing the window hides NightOwl in the tray. Quit exits. Scrolling the tray icon changes brightness. It starts with Windows and stays in the tray.
 

@@ -14,6 +14,8 @@ from bridge.monitor import geometry
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+ole32 = ctypes.WinDLL("ole32", use_last_error=True)
 
 LRESULT = ctypes.c_ssize_t
 WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
@@ -46,6 +48,25 @@ LWA_ALPHA = 0x02
 BLACK_BRUSH = 4
 ULW_ALPHA = 0x00000002
 WDA_EXCLUDEFROMCAPTURE = 0x00000011
+WDA_NONE = 0
+DWMWA_EXCLUDED_FROM_PEEK = 12
+EVENT_OBJECT_SHOW = 0x8002
+EVENT_OBJECT_HIDE = 0x8003
+WINEVENT_OUTOFCONTEXT = 0x0000
+WINEVENT_SKIPOWNPROCESS = 0x0002
+# Taskbar hover previews. While one of these is up, capture-exclusion
+# makes Windows drop the shade from the monitor.
+PREVIEW_CLASSES = ("Xaml_WindowedPopupClass", "TaskListThumbnailWnd")
+WINEVENTPROC = ctypes.WINFUNCTYPE(
+    None,
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    wintypes.HWND,
+    ctypes.c_long,
+    ctypes.c_long,
+    wintypes.DWORD,
+    wintypes.DWORD,
+)
 
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
@@ -246,6 +267,28 @@ def _bind() -> None:
     kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
     kernel32.GetModuleHandleW.restype = wintypes.HINSTANCE
     kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetClassNameW.restype = ctypes.c_int
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
+    user32.GetWindowRect.restype = wintypes.BOOL
+    user32.IsWindow.argtypes = [wintypes.HWND]
+    user32.IsWindow.restype = wintypes.BOOL
+    user32.SetWinEventHook.argtypes = [
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HMODULE,
+        WINEVENTPROC,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ]
+    user32.SetWinEventHook.restype = wintypes.HANDLE
+    user32.UnhookWinEvent.argtypes = [wintypes.HANDLE]
+    user32.UnhookWinEvent.restype = wintypes.BOOL
+    dwmapi.DwmSetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+    dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+    ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    ole32.CoInitializeEx.restype = ctypes.c_long
 
 
 _bind()
@@ -264,6 +307,9 @@ class Veil:
         self._ack = threading.Event()
         self._veil_alpha = 0
         self._tint_alpha = 0
+        self._preview_holding = False
+        self._preview_hook = None
+        self._preview_proc = None
         self._amber = None
         self._surface = {}
         self._tray = None
@@ -308,6 +354,7 @@ class Veil:
         self._thread.join(timeout=2)
 
     def _loop(self) -> None:
+        ole32.CoInitializeEx(None, 2)
         self.thread_id = kernel32.GetCurrentThreadId()
         instance = kernel32.GetModuleHandleW(None)
         klass = WNDCLASSW()
@@ -370,6 +417,18 @@ class Veil:
         up = bool(user32.RegisterHotKey(self.hwnd, HOT_UP, mods, VK_UP))
         down = bool(user32.RegisterHotKey(self.hwnd, HOT_DOWN, mods, VK_DOWN))
         self.hotkeys = up and down
+        self._stay_during_peek(self.hwnd)
+        self._stay_during_peek(self.tint_hwnd)
+        self._preview_proc = WINEVENTPROC(self._on_preview_event)
+        self._preview_hook = user32.SetWinEventHook(
+            EVENT_OBJECT_SHOW,
+            EVENT_OBJECT_HIDE,
+            None,
+            self._preview_proc,
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        )
         user32.SetTimer(self.hwnd, 3, 1000, None)
         self.ready.set()
         message = MSG()
@@ -379,6 +438,9 @@ class Veil:
                 break
             user32.TranslateMessage(ctypes.byref(message))
             user32.DispatchMessageW(ctypes.byref(message))
+        if self._preview_hook:
+            user32.UnhookWinEvent(self._preview_hook)
+            self._preview_hook = None
         if self._tray is not None:
             self._tray.remove()
             self._tray = None
@@ -406,6 +468,7 @@ class Veil:
             self._ack.set()
             return 0
         if msg == 0x0113 and int(wparam) == 3:
+            self._refresh_preview()
             self._raise_stack()
             return 0
         if msg == WM_HOTKEY:
@@ -435,6 +498,56 @@ class Veil:
         if msg == WM_DESTROY:
             return 0
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+    def _stay_during_peek(self, hwnd) -> None:
+        if not hwnd:
+            return
+        shown = wintypes.BOOL(1)
+        dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_EXCLUDED_FROM_PEEK, ctypes.byref(shown), ctypes.sizeof(shown))
+
+    def _capture_affinity(self) -> int:
+        return WDA_NONE if self._preview_holding else WDA_EXCLUDEFROMCAPTURE
+
+    def _preview_open(self) -> bool:
+        found = False
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        def enum(hwnd, lp):
+            nonlocal found
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            name = ctypes.create_unicode_buffer(64)
+            user32.GetClassNameW(hwnd, name, 64)
+            if name.value not in PREVIEW_CLASSES:
+                return True
+            # The Win11 preview host is visible with an empty rect. The thumbnail
+            # itself is drawn by XAML, so size is not a useful filter.
+            found = True
+            return False
+
+        user32.EnumWindows(enum, 0)
+        return found
+
+    def _refresh_preview(self) -> None:
+        open_now = self._preview_open()
+        if open_now == self._preview_holding:
+            return
+        self._preview_holding = open_now
+        affinity = self._capture_affinity()
+        if self.hwnd and self._veil_alpha > 0:
+            user32.SetWindowDisplayAffinity(self.hwnd, affinity)
+        if self.tint_hwnd and self._tint_alpha > 0:
+            user32.SetWindowDisplayAffinity(self.tint_hwnd, affinity)
+
+    def _on_preview_event(self, hook, event, hwnd, id_object, id_child, thread, time_ms) -> None:
+        if not hwnd or not user32.IsWindow(hwnd):
+            return
+        name = ctypes.create_unicode_buffer(64)
+        if not user32.GetClassNameW(hwnd, name, 64):
+            return
+        if name.value not in PREVIEW_CLASSES:
+            return
+        self._refresh_preview()
 
     def _apply_alpha(self, hwnd, alpha: int) -> None:
         if alpha <= 0:
@@ -468,7 +581,8 @@ class Veil:
         if not updated:
             user32.SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)
             user32.ShowWindow(hwnd, 8)
-        user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
+        self._stay_during_peek(hwnd)
+        user32.SetWindowDisplayAffinity(hwnd, self._capture_affinity())
         self._raise_stack()
 
     def _color_dc(self, hwnd, color: int, width: int, height: int):

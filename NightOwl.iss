@@ -2,7 +2,7 @@
 ; Settings stay in %APPDATA%\NightOwl and are not removed on uninstall.
 
 #define MyAppName "NightOwl"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppExeName "NightOwl.exe"
 
 [Setup]
